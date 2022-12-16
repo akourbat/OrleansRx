@@ -1,26 +1,30 @@
 ﻿using GrainInterfaces;
 using Microsoft.Extensions.Logging;
+using System.Reactive;
 using System.Reactive.Concurrency;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
 namespace Grains;
 
-public class HelloGrain : Grain, IHello
+public class HelloGrain : Grain, IHello, IDisposable
 {
     private readonly ILogger _logger;
-    private ISubject<long> _ticksSubj;
-    public IObservable<long> Ticks => _ticksSubj.AsObservable();
+    private readonly ISubject<Timestamped<long>> _ticksSubj;
+    private readonly IObservable<Timestamped<long>> _ticks;
+    private readonly CompositeDisposable _ticksSubscription; 
 
     public HelloGrain(ILogger<HelloGrain> logger)
     {
         _logger = logger;
-        _ticksSubj = new Subject<long>();
+        _ticksSubj = new Subject<Timestamped<long>>();
+        _ticks = _ticksSubj.AsObservable();
+        _ticksSubscription = new CompositeDisposable(_ticks.Subscribe(x => _logger.LogInformation($"Tick received {x}")));
     }
     public override Task OnActivateAsync(CancellationToken token)
     {
         _logger.LogInformation("OnActivateAsync");
-        Ticks.Subscribe(x => _logger.LogInformation($"Tick received {x}"));
         return Task.CompletedTask;
     }
 
@@ -35,7 +39,7 @@ public class HelloGrain : Grain, IHello
             """);
     }
 
-    Task IHello.DoTick(long tick)
+    Task IHello.DoTick(Timestamped<long> tick)
     {
         _ticksSubj.OnNext(tick);
         return Task.CompletedTask;
@@ -47,13 +51,21 @@ public class HelloGrain : Grain, IHello
 
         var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
 
-        Observable.Interval(TimeSpan.FromSeconds(2))
+        // NOTE: be sure to dispose any observables before the grain deactivates.
+         var dot = Observable.Interval(TimeSpan.FromSeconds(1))
             .Take(ticks)
             .SubscribeOn(ThreadPoolScheduler.Instance)
-            .ObserveOn(rxScheduler)
+            .ObserveOn(rxScheduler.DisableOptimizations(new[] { typeof(ISchedulerLongRunning) }))
+            .Timestamp()
             .Subscribe(x => _ticksSubj.OnNext(x));
-            //.Subscribe(async x => await this.AsReference<IHello>().DoTick(x));
+
+        _ticksSubscription.Add(dot);
 
         return ValueTask.FromResult($"Applying DoT with {ticks} ticks.");
+    }
+
+    public void Dispose()
+    {
+        _ticksSubscription.Dispose();
     }
 }
