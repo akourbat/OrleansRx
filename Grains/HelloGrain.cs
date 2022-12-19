@@ -11,23 +11,32 @@ namespace Grains;
 public class HelloGrain : Grain, IHello, IDisposable
 {
     private readonly ILogger _logger;
-    private readonly ISubject<IObservable<Timestamped<long>>> _ticksSubj;
-    private readonly IObservable<IObservable<Timestamped<long>>> _ticks;
+    private readonly IObservable<Timestamped<long>> _eventSub;
     private readonly CompositeDisposable _ticksSubscription;
-    //private readonly ISubject<Timestamped<long>> _ticksSubj;
-    //private readonly IObservable<Timestamped<long>> _ticks;
+    public event EventHandler<IObservable<Timestamped<long>>> TickObservableReceived;
 
     public HelloGrain(ILogger<HelloGrain> logger)
     {
         _logger = logger;
-        _ticksSubj = new Subject<IObservable<Timestamped<long>>>();
-        //_ticksSubj = new Subject<Timestamped<long>>();
-        _ticks = _ticksSubj.AsObservable();
-        _ticksSubscription = new CompositeDisposable(_ticks.Merge().Subscribe(x => _logger.LogInformation($"Tick received {x}")));
+        
+        _eventSub = Observable.FromEventPattern<IObservable<Timestamped<long>>>(
+            h => this.TickObservableReceived += h,
+            h => this.TickObservableReceived -= h)
+            .Synchronize()
+            .Select(x => x.EventArgs)
+            .Merge();
+        
+        _ticksSubscription = new CompositeDisposable();
     }
     public override Task OnActivateAsync(CancellationToken token)
     {
         _logger.LogInformation("OnActivateAsync");
+        var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
+        var t1 = _eventSub
+                 .ObserveOn(rxScheduler)
+                 .Subscribe(x => _logger.LogInformation($"Tick received {x}"));
+        _ticksSubscription.Add(t1);
+
         return Task.CompletedTask;
     }
 
@@ -41,29 +50,17 @@ public class HelloGrain : Grain, IHello, IDisposable
             Client said: '{greeting}', so HelloGrain says: Hello!
             """);
     }
-
-    Task IHello.DoTick(Timestamped<long> tick)
-    {
-        //_ticksSubj.OnNext(tick);
-        return Task.CompletedTask;
-    }
-
+    
     ValueTask<string> IHello.ApplyDot(int ticks)
     {
         _logger.LogInformation($"ApplyDot message received: number of ticks to process = {ticks}");
 
-        var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
-
-        // NOTE: be sure to dispose any observables before the grain deactivates.
         var dot = Observable.Interval(TimeSpan.FromSeconds(1))
            .Take(ticks)
            .SubscribeOn(ThreadPoolScheduler.Instance)
-           .ObserveOn(rxScheduler.DisableOptimizations(new[] { typeof(ISchedulerLongRunning) }))
            .Timestamp();
-        _ticksSubj.OnNext(dot);
-            //.Subscribe(x => _ticksSubj.OnNext(x));
 
-        //_ticksSubscription.Add(dot);
+        this.TickObservableReceived?.Invoke(this, dot);        
 
         return ValueTask.FromResult($"Applying DoT with {ticks} ticks.");
     }
