@@ -11,23 +11,24 @@ namespace Grains;
 public class HelloGrain : Grain, IHello, IDisposable
 {
     private readonly ILogger _logger;
-    private readonly ISubject<IObservable<Timestamped<long>>> _ticksSubj;
-    private readonly IObservable<IObservable<Timestamped<long>>> _ticks;
-    private readonly CompositeDisposable _ticksSubscription;
-    //private readonly ISubject<Timestamped<long>> _ticksSubj;
-    //private readonly IObservable<Timestamped<long>> _ticks;
+    //private readonly ISubject<IObservable<Timestamped<long>>> _ticksSubj;
+    private ISubject<IObservable<Timestamped<long>>> _ticksSubjSync;
+   // private readonly IObservable<IObservable<Timestamped<long>>> _ticks;
+    private CompositeDisposable _ticksSubscription;
 
     public HelloGrain(ILogger<HelloGrain> logger)
     {
         _logger = logger;
-        _ticksSubj = new Subject<IObservable<Timestamped<long>>>();
-        //_ticksSubj = new Subject<Timestamped<long>>();
-        _ticks = _ticksSubj.AsObservable();
-        _ticksSubscription = new CompositeDisposable(_ticks.Merge().Subscribe(x => _logger.LogInformation($"Tick received {x}")));
+       // _ticksSubj = new Subject<IObservable<Timestamped<long>>>();
+       // _ticks = _ticksSubj.AsObservable();
+       
     }
     public override Task OnActivateAsync(CancellationToken token)
     {
         _logger.LogInformation("OnActivateAsync");
+        var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
+        _ticksSubjSync = Subject.Synchronize(new Subject<IObservable<Timestamped<long>>>(), rxScheduler);
+        _ticksSubscription = new CompositeDisposable(_ticksSubjSync.Merge().Subscribe(x => _logger.LogInformation($"Tick received {x}")));//Now thread-safe, serial messages downstream on RXScheduler
         return Task.CompletedTask;
     }
 
@@ -52,18 +53,11 @@ public class HelloGrain : Grain, IHello, IDisposable
     {
         _logger.LogInformation($"ApplyDot message received: number of ticks to process = {ticks}");
 
-        var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
-
-        // NOTE: be sure to dispose any observables before the grain deactivates.
         var dot = Observable.Interval(TimeSpan.FromSeconds(1))
            .Take(ticks)
            .SubscribeOn(ThreadPoolScheduler.Instance)
-           .ObserveOn(rxScheduler.DisableOptimizations(new[] { typeof(ISchedulerLongRunning) }))
            .Timestamp();
-        _ticksSubj.OnNext(dot);
-            //.Subscribe(x => _ticksSubj.OnNext(x));
-
-        //_ticksSubscription.Add(dot);
+        _ticksSubjSync.OnNext(dot);
 
         return ValueTask.FromResult($"Applying DoT with {ticks} ticks.");
     }
