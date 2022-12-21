@@ -42,11 +42,12 @@ static async Task DoClientWorkAsync(IClusterClient client)
 {
     var friend = client.GetGrain<IHello>("Alex");
 
-    var response = await friend.ApplyDot(5);
-    Console.WriteLine($"\n\n{response}\n\n");
-    response = await friend.ApplyDot(3);
+    var response = await friend.ApplyDot(new DoT { Id = 1, Type = "Slow", NumberOfTicks = 5, TickValue = 30 });
     Console.WriteLine($"\n\n{response}\n\n");
 
-    response = await friend.SayHello("Hello from Orleans Clent!");
-    Console.WriteLine($"\n\n{response}\n\n");
+    //response = await friend.SayHello("Hello from Orleans Clent!");
+    //Console.WriteLine($"\n\n{response}\n\n");
+
+    //response = await friend.ApplyDot(new DoT { Id = 2, Type = "Bleed", NumberOfTicks = 3, TickValue = 30});
+    //Console.WriteLine($"\n\n{response}\n\n");
 }
