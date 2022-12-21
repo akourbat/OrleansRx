@@ -48,6 +48,6 @@ static async Task DoClientWorkAsync(IClusterClient client)
     //response = await friend.SayHello("Hello from Orleans Clent!");
     //Console.WriteLine($"\n\n{response}\n\n");
 
-    //response = await friend.ApplyDot(new DoT { Id = 2, Type = "Bleed", NumberOfTicks = 3, TickValue = 30});
-    //Console.WriteLine($"\n\n{response}\n\n");
+    response = await friend.ApplyDot(new DoT { Id = 2, Type = "Bleed", NumberOfTicks = 3, TickValue = 20 });
+    Console.WriteLine($"\n\n{response}\n\n");
 }

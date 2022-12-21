@@ -42,22 +42,46 @@ public class HelloGrain : IGrainBase, IHello, IDisposable
     {
         _logger.LogInformation("OnActivateAsync");
         var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
-        var t1 = _ticksObservable
+
+        var ticks = _ticksObservable
                  .ObserveOn(rxScheduler)
-                 .Subscribe(x => _logger.LogInformation($"Tick received {x}, Scheduler: {TaskScheduler.Current}"));
+                 .Publish();
 
+        var t1sub = ticks.Subscribe(x => _logger.LogInformation($"Tick received {x}, Scheduler: {TaskScheduler.Current}"));
 
-        var t2 = _cache.Connect().Transform(x => x.Type).Bind(out statusEffects)
-            .Subscribe();
+        var t2sub = ticks.Scan(new List<string>(), (seed, tick) =>
+        {
+            if (tick.Value.Status.Contains("START"))
+            {
+                seed.Add(tick.Value.Type);
+                return seed;
+            }
+            if (tick.Value.Status.Contains("END"))
+            {
+                seed.Remove(tick.Value.Type);
+                return seed;
+            }
+            return seed;
+        }).Subscribe(list => 
+        {
+            if (list.Any())
+            {
+                foreach (var item in list)
+                {
+                    _logger.LogInformation($"Now Effects have {item}");
+                }
+            }
+            else { _logger.LogInformation($"Now Effects have no effects"); }
+            
+        });
 
-        var t3 = statusEffects.ObserveCollectionChanges()
-            //.Where(e => e.EventArgs.Action == NotifyCollectionChangedAction.Add ||
-            //    e.EventArgs.Action == NotifyCollectionChangedAction.Remove)
-               .Subscribe(t => _logger.LogInformation($"Something Changed in the effects collection! Scheduler: {TaskScheduler.Current}"));
+        ticks.Connect();
 
-        _ticksSubscription.Add(t1);
+        var t2 = _cache.Connect().Transform(x => x.Type).Bind(out statusEffects).Subscribe();
+
+        _ticksSubscription.Add(t1sub);
+        _ticksSubscription.Add(t2sub);
         _ticksSubscription.Add(t2);
-        _ticksSubscription.Add(t3);
 
         return Task.CompletedTask;
     }
@@ -73,26 +97,26 @@ public class HelloGrain : IGrainBase, IHello, IDisposable
     {
         _logger.LogInformation($"ApplyDot message received: number of ticks to process = {dot.NumberOfTicks}");
 
-        //var dotSequence = Observable.Interval(TimeSpan.FromSeconds(2))
-        //   .Select(t => new Tick { Type = dot.Type, TickValue = dot.TickValue })
-        //   .StartWith(new Tick { Type = dot.Type, Status = "START----" })
-        //   .Take(dot.NumberOfTicks)
-        //   .TakeUntil(Observable.Timer(TimeSpan.FromSeconds(7)))
-        //   .SubscribeOn(ThreadPoolScheduler.Instance)
-        //   .Timestamp()
-        //   .Concat(Observable.Return(new Tick { Type = dot.Type, Status = "END----" }).Timestamp())
-        //   .Finally(() => this._cache.Remove(dot));
+        var dotSequence = Observable.Interval(TimeSpan.FromSeconds(2))
+           .Select(t => new Tick(1, dot.Type, dot.TickValue))
+           .StartWith(new Tick(2, dot.Type, 0, "START----"))
+           .Take(dot.NumberOfTicks)
+           //.TakeUntil(Observable.Timer(TimeSpan.FromSeconds(7)))
+           .SubscribeOn(ThreadPoolScheduler.Instance)
+           .Timestamp()
+           .Concat(Observable.Return(new Tick(2, dot.Type, 0, "END----")).Timestamp());
+        //.Finally(() => this._cache.Remove(dot));
 
         //this._cache.AddOrUpdate(dot);
-        //this.TickObservableReceived?.Invoke(this, dotSequence);
+        this.TickObservableReceived?.Invoke(this, dotSequence);
 
-        var debuff = Observable.Never<Tick>()
-            .StartWith(new Tick { Type = dot.Type, TickValue = -dot.TickValue, Status = "START---- "})
-            .TakeUntil(Observable.Timer(TimeSpan.FromSeconds(6)).Amb(Observable.Timer(TimeSpan.FromSeconds(4))))
-            .Concat(Observable.Return(new Tick { Type = dot.Type, TickValue = dot.TickValue, Status = "END---- " }))
-            .Timestamp();
+        //var debuff = Observable.Never<Tick>()
+        //    .StartWith(new Tick(1, dot.Type, -dot.TickValue, "START---- "))
+        //    .TakeUntil(Observable.Timer(TimeSpan.FromSeconds(6)).Amb(Observable.Timer(TimeSpan.FromSeconds(4))))
+        //    .Concat(Observable.Return(new Tick(1, dot.Type, dot.TickValue, "END---- ")))
+        //    .Timestamp();
 
-        this.TickObservableReceived?.Invoke(this, debuff);
+        //this.TickObservableReceived?.Invoke(this, debuff);
 
         return ValueTask.FromResult($"Applying DoT with {dot.NumberOfTicks} ticks.");
     }
