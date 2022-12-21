@@ -2,6 +2,7 @@
 using DynamicData.Binding;
 using GrainInterfaces;
 using Microsoft.Extensions.Logging;
+using Orleans.Runtime;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Reactive;
@@ -10,17 +11,21 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 
 namespace Grains;
-public class HelloGrain : Grain, IHello, IDisposable
+public class HelloGrain : IGrainBase, IHello, IDisposable
 {
     private ISourceCache<DoT, int> _cache;
     public ReadOnlyObservableCollection<string> statusEffects;
     private readonly ILogger _logger;
     private readonly IObservable<Timestamped<Tick>> _ticksObservable;
     private readonly CompositeDisposable _ticksSubscription;
+
+    public IGrainContext GrainContext { get; }
+
     public event EventHandler<IObservable<Timestamped<Tick>>> TickObservableReceived;
 
-    public HelloGrain(ILogger<HelloGrain> logger)
+    public HelloGrain(ILogger<HelloGrain> logger, IGrainContext context)
     {
+        GrainContext= context;
         _logger = logger;
         _cache = new SourceCache<DoT, int>(dot => dot.Id);
 
@@ -33,7 +38,7 @@ public class HelloGrain : Grain, IHello, IDisposable
 
         _ticksSubscription = new CompositeDisposable();
     }
-    public override Task OnActivateAsync(CancellationToken token)
+    public Task OnActivateAsync(CancellationToken token)
     {
         _logger.LogInformation("OnActivateAsync");
         var rxScheduler = new TaskPoolScheduler(new TaskFactory(TaskScheduler.Current));
