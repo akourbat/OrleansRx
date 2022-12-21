@@ -44,8 +44,8 @@ static async Task DoClientWorkAsync(IClusterClient client)
 
     var response = await friend.ApplyDot(5);
     Console.WriteLine($"\n\n{response}\n\n");
-    response = await friend.ApplyDot(3);
-    Console.WriteLine($"\n\n{response}\n\n");
+    //response = await friend.ApplyDot(3);
+    //Console.WriteLine($"\n\n{response}\n\n");
 
     response = await friend.SayHello("Hello from Orleans Clent!");
     Console.WriteLine($"\n\n{response}\n\n");

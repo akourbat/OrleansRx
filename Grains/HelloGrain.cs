@@ -46,6 +46,13 @@ public class HelloGrain : Grain, IHello, IDisposable
     {
         _logger.LogInformation($"ApplyDot message received: number of ticks to process = {ticks}");
 
+        //var debuff = Observable.Never<long>()
+        //    .StartWith(-100L)
+        //    .TakeUntil(Observable.Timer(TimeSpan.FromSeconds(6)).Amb(Observable.Timer(TimeSpan.FromSeconds(4))))
+        //    .Concat(Observable.Return(100L))
+        //    .Timestamp();
+        //_ticksSubjSync.OnNext(debuff);
+
         var dot = Observable.Interval(TimeSpan.FromSeconds(1))
            .Take(ticks)
            .SubscribeOn(ThreadPoolScheduler.Instance) //not really nessesary, as RX will do it anyways for time-based operators like Interval
