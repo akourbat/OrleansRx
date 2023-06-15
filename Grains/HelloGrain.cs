@@ -105,9 +105,10 @@ public class HelloGrain : IGrainBase, IHello, IDisposable
            .SubscribeOn(ThreadPoolScheduler.Instance)
            .Timestamp()
            .Concat(Observable.Return(new Tick(2, dot.Type, 0, "END----")).Timestamp());
-        //.Finally(() => this._cache.Remove(dot));
+         //.Finally(() => this._cache.Remove(dot));
 
         //this._cache.AddOrUpdate(dot);
+
         this.TickObservableReceived?.Invoke(this, dotSequence);
 
         //var debuff = Observable.Never<Tick>()
